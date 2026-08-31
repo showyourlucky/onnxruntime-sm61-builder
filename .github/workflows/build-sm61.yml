@@ -33,6 +33,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install packaging wheel numpy ninja
 
+      - name: Setup Sccache (Compilation Cache)
+        uses: mozilla-actions/sccache-action@v0.0.8
+        with:
+          version: "v0.8.1"
+
+      - name: Configure Sccache Environment
+        shell: pwsh
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
+          echo "ACTIONS_CACHE_URL=$env:ACTIONS_CACHE_URL" >> $env:GITHUB_ENV
+          echo "ACTIONS_RUNTIME_TOKEN=$env:ACTIONS_RUNTIME_TOKEN" >> $env:GITHUB_ENV
+
       - name: Install CUDA Toolkit 12.8 (Full SDK)
         uses: Jimver/cuda-toolkit@v0.2.21
         with:
@@ -59,6 +71,17 @@ jobs:
           Write-Host "Cloning ONNX Runtime ref: $ref ..."
           git clone --depth 1 --branch $ref --recursive https://github.com/microsoft/onnxruntime.git onnxruntime-src
 
+      - name: Patch SM80 FMHA Isolation in CMake
+        shell: pwsh
+        run: |
+          cd onnxruntime-src
+          # Isolate cutlass_fmha (fmha_sm80.cu) to SM80 target library so it never compiles for sm_61
+          $filterFile = "cmake/onnxruntime_cuda_source_filters.cmake"
+          $content = Get-Content $filterFile -Raw
+          $patched = $content -replace '/bert/flash_attention/\\.\\*\\\.cu\$', '/bert/(flash_attention|cutlass_fmha)/.*\.cu$'
+          Set-Content -Path $filterFile -Value $patched -NoNewline
+          Write-Host "Successfully patched $filterFile"
+
       - name: Build ONNX Runtime with sm_61
         shell: pwsh
         run: |
@@ -79,6 +102,7 @@ jobs:
             --config Release `
             --build_shared_lib `
             --parallel `
+            --use_cache `
             --use_cuda `
             --cuda_home "$cudaPath" `
             --cudnn_home "$cudnnDir" `
