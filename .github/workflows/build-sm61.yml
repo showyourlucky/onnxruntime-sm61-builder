@@ -71,36 +71,10 @@ jobs:
           Write-Host "Cloning ONNX Runtime ref: $ref ..."
           git clone --depth 1 --branch $ref --recursive https://github.com/microsoft/onnxruntime.git onnxruntime-src
 
-      - name: Patch SM80 FMHA in ONNX Runtime
+      - name: Execute Dual-Layer SM80 Isolation Patch
         shell: pwsh
         run: |
-          python -c "
-          import os
-
-          # 1. Patch CMake source filters to isolate cutlass_fmha into SM80 library
-          filter_path = os.path.join('onnxruntime-src', 'cmake', 'onnxruntime_cuda_source_filters.cmake')
-          if os.path.exists(filter_path):
-              with open(filter_path, 'r', encoding='utf-8') as f:
-                  c = f.read()
-              c = c.replace('/bert/flash_attention/.*\\.cu$', '/bert/(flash_attention|cutlass_fmha)/.*\\.cu$')
-              with open(filter_path, 'w', encoding='utf-8') as f:
-                  f.write(c)
-              print('Patched CMake source filters successfully.')
-
-          # 2. Patch fmha_sm80.cu with pre-sm80 device guard
-          fmha_path = os.path.join('onnxruntime-src', 'onnxruntime', 'contrib_ops', 'cuda', 'bert', 'cutlass_fmha', 'fmha_sm80.cu')
-          if os.path.exists(fmha_path):
-              with open(fmha_path, 'r', encoding='utf-8') as f:
-                  c = f.read()
-              target = 'void run_memory_efficient_attention_sm80(const MemoryEfficientAttentionParams& params) {'
-              repl = target + '\n#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800)\n  // No-op for pre-sm80 device passes\n#else'
-              if target in c and '#if defined(__CUDA_ARCH__)' not in c:
-                  c = c.replace(target, repl)
-                  c = c.replace('}\n\n}  // namespace cuda', '#endif\n}\n\n}  // namespace cuda')
-                  with open(fmha_path, 'w', encoding='utf-8') as f:
-                      f.write(c)
-                  print('Patched fmha_sm80.cu successfully.')
-          "
+          python patch_onnx.py
 
       - name: Build ONNX Runtime with sm_61
         shell: pwsh
