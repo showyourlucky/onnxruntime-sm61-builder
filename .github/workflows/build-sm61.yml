@@ -84,15 +84,22 @@ jobs:
         run: |
           # Fix: Remove buggy Strawberry Perl patch.exe from PATH and prioritize Git's patch.exe
           $cleanPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Strawberry' }) -join ';'
-          $env:PATH = "C:\Program Files\Git\usr\bin;$cleanPath"
+          $cudaBin = "$env:CUDA_PATH\bin"
+          $env:PATH = "$cudaBin;C:\Program Files\Git\usr\bin;$cleanPath"
+          $env:CUDACXX = "$cudaBin\nvcc.exe"
+          $nvccExe = "$cudaBin\nvcc.exe".Replace('\', '/')
+
           Write-Host "Verifying patch.exe location:"
           Get-Command patch.exe | Select-Object -ExpandProperty Source
+          Write-Host "Verifying nvcc.exe location:"
+          Get-Command nvcc.exe | Select-Object -ExpandProperty Source
 
           cd onnxruntime-src
           $cudaPath = $env:CUDA_PATH
           $cudnnDir = Get-ChildItem -Path "C:\cudnn" -Directory | Select-Object -First 1 -ExpandProperty FullName
           Write-Host "Using CUDA: $cudaPath"
           Write-Host "Using cuDNN: $cudnnDir"
+          Write-Host "Using CUDACXX: $env:CUDACXX"
 
           python tools/ci_build/build.py `
             --build_dir build/Windows `
@@ -104,7 +111,7 @@ jobs:
             --use_cuda `
             --cuda_home "$cudaPath" `
             --cudnn_home "$cudnnDir" `
-            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="61" onnxruntime_USE_FP4_QMOE=OFF `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="61" onnxruntime_USE_FP4_QMOE=OFF CMAKE_CUDA_COMPILER="$nvccExe" `
             --skip_tests
 
       - name: Package Output DLLs
