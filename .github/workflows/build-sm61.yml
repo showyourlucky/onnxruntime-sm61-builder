@@ -16,12 +16,15 @@ permissions:
 
 jobs:
   build:
-    name: Build ONNX Runtime (CUDA 12.8 + sm_61)
+    name: Build ONNX Runtime (CUDA 12.8 + sm_61 + Ninja + Sccache)
     runs-on: windows-2022
 
     steps:
       - name: Checkout Builder Repo
         uses: actions/checkout@v4
+
+      - name: Set up MSVC Developer Environment
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -76,7 +79,7 @@ jobs:
         run: |
           python patch_onnx.py
 
-      - name: Build ONNX Runtime with sm_61
+      - name: Build ONNX Runtime with sm_61 (Ninja + Sccache)
         shell: pwsh
         run: |
           # Fix: Remove buggy Strawberry Perl patch.exe from PATH and prioritize Git's patch.exe
@@ -97,10 +100,11 @@ jobs:
             --build_shared_lib `
             --parallel `
             --use_cache `
+            --cmake_generator Ninja `
             --use_cuda `
             --cuda_home "$cudaPath" `
             --cudnn_home "$cudnnDir" `
-            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="61;80" onnxruntime_USE_FP4_QMOE=OFF `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="61" onnxruntime_USE_FP4_QMOE=OFF `
             --skip_tests
 
       - name: Package Output DLLs
@@ -109,11 +113,7 @@ jobs:
           $outputDir = "dist\onnxruntime-1.27-cuda-sm61-win64"
           New-Item -ItemType Directory -Path $outputDir -Force
 
-          $buildOut = "onnxruntime-src\build\Windows\Release\Release"
-          if (-not (Test-Path $buildOut)) {
-            $buildOut = "onnxruntime-src\build\Windows\Release"
-          }
-
+          $buildOut = "onnxruntime-src\build\Windows\Release"
           Write-Host "Searching build output in $buildOut ..."
           Get-ChildItem -Path $buildOut -Filter "*.dll" -Recurse | ForEach-Object {
             Write-Host "Found DLL: $($_.FullName)"
