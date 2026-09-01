@@ -41,12 +41,19 @@ jobs:
         with:
           version: "v0.8.1"
 
-      - name: Configure Sccache Environment
+      - name: Configure Sccache and Ccache Alias
         shell: pwsh
         run: |
           echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
           echo "ACTIONS_CACHE_URL=$env:ACTIONS_CACHE_URL" >> $env:GITHUB_ENV
           echo "ACTIONS_RUNTIME_TOKEN=$env:ACTIONS_RUNTIME_TOKEN" >> $env:GITHUB_ENV
+
+          # Create ccache.exe alias pointing to sccache.exe for build.py compatibility
+          $sccacheCmd = Get-Command sccache.exe
+          $sccacheDir = Split-Path $sccacheCmd.Source
+          Copy-Item $sccacheCmd.Source "$sccacheDir\ccache.exe" -Force
+          Write-Host "Created ccache alias at $sccacheDir\ccache.exe"
+          Get-Command ccache.exe | Select-Object -ExpandProperty Source
 
       - name: Install CUDA Toolkit 12.8 (Full SDK)
         uses: Jimver/cuda-toolkit@v0.2.21
@@ -93,6 +100,8 @@ jobs:
           Get-Command patch.exe | Select-Object -ExpandProperty Source
           Write-Host "Verifying nvcc.exe location:"
           Get-Command nvcc.exe | Select-Object -ExpandProperty Source
+          Write-Host "Verifying ccache.exe location:"
+          Get-Command ccache.exe | Select-Object -ExpandProperty Source
 
           cd onnxruntime-src
           $cudaPath = $env:CUDA_PATH
