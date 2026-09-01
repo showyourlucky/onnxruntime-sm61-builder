@@ -19,6 +19,10 @@ jobs:
     name: Build ONNX Runtime (CUDA 12.8 + sm_61 + Ninja + Sccache)
     runs-on: windows-2022
 
+    env:
+      SCCACHE_DIR: "C:\\sccache"
+      SCCACHE_CACHE_SIZE: "10G"
+
     steps:
       - name: Checkout Builder Repo
         uses: actions/checkout@v4
@@ -36,24 +40,32 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install packaging wheel numpy ninja
 
-      - name: Setup Sccache (Compilation Cache)
+      - name: Setup Sccache
         uses: mozilla-actions/sccache-action@v0.0.8
         with:
           version: "v0.8.1"
 
+      - name: Restore / Save Sccache Disk Cache
+        uses: actions/cache@v4
+        with:
+          path: C:\sccache
+          key: ${{ runner.os }}-sccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-sccache-
+
       - name: Configure Sccache and Ccache Alias
         shell: pwsh
         run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
-          echo "ACTIONS_CACHE_URL=$env:ACTIONS_CACHE_URL" >> $env:GITHUB_ENV
-          echo "ACTIONS_RUNTIME_TOKEN=$env:ACTIONS_RUNTIME_TOKEN" >> $env:GITHUB_ENV
-
-          # Create ccache.exe alias pointing to sccache.exe for build.py compatibility
+          New-Item -ItemType Directory -Path $env:SCCACHE_DIR -Force
           $sccacheCmd = Get-Command sccache.exe
           $sccacheDir = Split-Path $sccacheCmd.Source
           Copy-Item $sccacheCmd.Source "$sccacheDir\ccache.exe" -Force
           Write-Host "Created ccache alias at $sccacheDir\ccache.exe"
-          Get-Command ccache.exe | Select-Object -ExpandProperty Source
+
+          # Start local sccache server
+          sccache --stop-server 2>$null
+          sccache --start-server
+          sccache --show-stats
 
       - name: Install CUDA Toolkit 12.8 (Full SDK)
         uses: Jimver/cuda-toolkit@v0.2.21
@@ -122,6 +134,8 @@ jobs:
             --cudnn_home "$cudnnDir" `
             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="61" onnxruntime_USE_FP4_QMOE=OFF CMAKE_CUDA_COMPILER="$nvccExe" `
             --skip_tests
+
+          sccache --show-stats
 
       - name: Package Output DLLs
         shell: pwsh
